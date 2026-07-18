@@ -17,7 +17,9 @@ function Download-File($url, $out) {
     try {
         Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
     } catch {
+        $ErrorActionPreference = "SilentlyContinue"
         & curl.exe -L -o $out $url 2>$null
+        $ErrorActionPreference = "Stop"
     }
     $ProgressPreference = "Continue"
     if (-not (Test-Path $out)) { throw "Download failed: $url" }
@@ -86,7 +88,9 @@ if (Test-Path (Join-Path $pyDir "python.exe")) {
     if (Test-Path $pth) {
         @("python312.zip", ".", "import site") | Set-Content -Path $pth
     }
+    $ErrorActionPreference = "SilentlyContinue"
     & (Join-Path $pyDir "python.exe") $getPip --quiet 2>$null
+    $ErrorActionPreference = "Stop"
     Remove-Item $getPip -Force -ErrorAction SilentlyContinue
 
     if (Test-Path (Join-Path $pyDir "python.exe")) { Write-OK "Python installed (with pip)" }
@@ -106,7 +110,9 @@ if (Test-Path (Join-Path $gitDir "cmd\git.exe")) {
     Write-Host "  Extracting (this may take a moment)..."
     if (Test-Path $gitDir) { Remove-Item $gitDir -Recurse -Force }
     New-Item -ItemType Directory -Path $gitDir -Force | Out-Null
+    $ErrorActionPreference = "SilentlyContinue"
     & $exe ("-o" + $gitDir) -y 2>$null | Out-Null
+    $ErrorActionPreference = "Stop"
     Start-Sleep -Seconds 5
     Remove-Item $exe -Force -ErrorAction SilentlyContinue
     if (Test-Path (Join-Path $gitDir "cmd\git.exe")) { Write-OK "Git installed" }
@@ -157,7 +163,9 @@ if (Test-Path $claudeCmd) {
 } else {
     Write-Host "  Installing via npm (may take a few minutes)..."
     $env:PATH = "$nodeDir;$env:PATH"
+    $ErrorActionPreference = "SilentlyContinue"
     & (Join-Path $nodeDir "npm.cmd") install -g "@anthropic-ai/claude-code" 2>&1 | Out-Null
+    $ErrorActionPreference = "Stop"
     if (Test-Path $claudeCmd) { Write-OK "claude-code CLI installed" }
     else { Write-Err "claude-code installation failed"; exit 1 }
 }
@@ -169,10 +177,12 @@ Write-Host ""
 Write-Step "Verification"
 $env:PATH = "$nodeDir;$pyDir;$(Join-Path $gitDir 'cmd');$env:PATH"
 
+$ErrorActionPreference = "SilentlyContinue"
 $nv = & (Join-Path $nodeDir "node.exe") --version 2>&1; Write-OK "Node.js $nv"
 $pv = & (Join-Path $pyDir "python.exe") --version 2>&1; Write-OK "$pv"
 $gv = & (Join-Path $gitDir "cmd\git.exe") --version 2>&1; Write-OK "$gv"
 $cv = & $claudeCmd --version 2>&1; Write-OK "claude $cv"
+$ErrorActionPreference = "Stop"
 
 Write-Host ""
 Write-Host "Setup complete! All dependencies installed." -ForegroundColor Green
