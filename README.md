@@ -43,7 +43,23 @@ cloudbox-ai/
 
 已安装的工具自动跳过，可重复运行。
 
-### 2. 配置中转 API
+### 2. 配置目录（云同步）
+
+打开 CCswitch → 设置 → 高级 → **配置文件目录**，将各工具的配置目录修改为本项目下的 `configs/` 子目录：
+
+| 配置项 | 路径 |
+|--------|------|
+| CC Switch 配置目录 | `<本项目路径>\configs\.cc-switch` |
+| Claude Code 配置目录 | `<本项目路径>\configs\.claude` |
+| Codex 配置目录 | `<本项目路径>\configs\.codex` |
+| Gemini 配置目录 | `<本项目路径>\configs\.gemini` |
+| OpenCode 配置目录 | `<本项目路径>\configs\opencode` |
+| OpenClaw 配置目录 | `<本项目路径>\configs\.openclaw` |
+| Hermes 配置目录 | `<本项目路径>\configs\.hermes` |
+
+> 将本项目放在云盘同步文件夹中（如百度网盘），配置即可自动同步到所有设备。换电脑后只需重新安装依赖 + 在 CCswitch 中重新指定目录即可。
+
+### 3. 配置中转 API
 
 双击 `启动.bat`，在打开的命令行中运行：
 
@@ -55,7 +71,7 @@ cc-switch
 
 > 注意：配置在用户目录，换电脑需重新配一次。**该文件含明文密钥，切勿外传。**
 
-### 3. 使用
+### 4. 使用
 
 双击 `启动.bat`，输入 `claude`。
 
