@@ -2,17 +2,25 @@
 
 云端 AI 工具便携环境合集（Windows）。
 
+通过云盘同步，实现多台电脑共享 AI 工具配置，开箱即用。
+
+## 系统要求
+
+- Windows 10 / 11（64 位）
+- 网络连接（首次安装需下载依赖）
+- 云盘同步工具（如百度网盘，可选，用于多设备同步）
+
 ## 目录结构
 
 ```
 cloudbox-ai/
 ├── setup.bat             一键安装所有依赖（双击）
 ├── setup.ps1             安装核心逻辑
+├── 启动.bat              启动便携环境（双击）
 ├── README.md
 ├── LICENSE               GPL v3
 ├── .gitignore
 │
-├── 启动.bat              启动 Claude Code（双击）
 ├── tools/                （自动安装，不入库）
 │   ├── node-v22.14.0-win-x64/   Node.js + claude CLI
 │   ├── python-full/             Python 完整版
@@ -37,7 +45,7 @@ cloudbox-ai/
 
 - Node.js v22.14.0
 - Python 3.12.8（含 pip）
-- Git (PortableGit)
+- Git (PortableGit 2.47.1)
 - CCswitch（从 GitHub 获取最新版）
 - claude-code CLI（预装到便携 Node）
 
@@ -67,20 +75,29 @@ cloudbox-ai/
 cc-switch
 ```
 
-用 CCswitch 配置中转地址和密钥（写入 `~/.claude/settings.json`）。
+在 CCswitch 中配置中转地址和 API 密钥。
 
-> 注意：配置在用户目录，换电脑需重新配一次。**该文件含明文密钥，切勿外传。**
+> ⚠️ **配置含明文密钥，切勿外传。** `configs/` 目录已在 `.gitignore` 中排除，不会被提交到 Git。
 
 ### 4. 使用
 
-双击 `启动.bat`，输入 `claude`。
+双击 `启动.bat`，输入 `claude` 即可开始使用。
+
+其他可用命令：
+
+```
+claude      - Claude Code CLI
+cc-switch   - CCswitch 配置工具
+python      - Python 3.12.8
+git         - Git 2.47.1
+```
 
 ## 手动安装（可选）
 
 1. **Node.js**：https://nodejs.org/dist/v22.14.0/node-v22.14.0-win-x64.zip → 解压到 `tools/node-v22.14.0-win-x64/`
 2. **预装 claude**：在该目录下执行 `npm.cmd install -g @anthropic-ai/claude-code`
-3. **Python**：官网完整版 → `tools/python-full/`
-4. **Git**：官网 Git → `tools/git-full/`
+3. **Python**：https://www.nuget.org/api/v2/package/python/3.12.8 → 解压到 `tools/python-full/`
+4. **Git**：PortableGit → `tools/git-full/`
 5. **CCswitch**：从 [GitHub releases](https://github.com/farion1231/cc-switch/releases) 下载 Windows Portable → `tools/ccswitch/`
 
 ## 许可证

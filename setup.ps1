@@ -1,4 +1,4 @@
-# setup.ps1 - One-click dependency installer for Claude Code portable environment
+# setup.ps1 - One-click dependency installer for cloudbox-ai portable environment
 # Downloads: Node.js, Python, Git, CCswitch, claude-code CLI
 
 $ErrorActionPreference = "Stop"
@@ -24,6 +24,21 @@ function Download-File($url, $out) {
 }
 
 if (-not (Test-Path $toolsDir)) { New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null }
+
+# ============================================================
+# 0. Initialize configs directory
+# ============================================================
+Write-Step "Initializing configs directory"
+$configsDir = Join-Path $root "configs"
+$configSubDirs = @(".cc-switch", ".claude", ".codex", ".gemini", "opencode", ".openclaw", ".hermes")
+foreach ($sub in $configSubDirs) {
+    $dir = Join-Path $configsDir $sub
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Write-OK "Created configs\$sub"
+    }
+}
+Write-OK "configs directory ready"
 
 # ============================================================
 # 1. Node.js v22.14.0

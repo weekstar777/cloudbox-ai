@@ -3,7 +3,7 @@ cd /d "%~dp0"
 
 echo.
 echo ========================================
-echo   Claude Portable Environment
+echo   cloudbox-ai Portable Environment
 echo ========================================
 echo.
 
@@ -16,8 +16,8 @@ echo.
 echo Available commands:
 echo   claude      - Claude Code CLI
 echo   cc-switch   - Config API relay
-echo   python      - Python 3.14.6
-echo   git         - Git 2.55.0
+echo   python      - Python 3.12.8
+echo   git         - Git 2.47.1
 echo.
 echo Type exit to quit
 echo.
