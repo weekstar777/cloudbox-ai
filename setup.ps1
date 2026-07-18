@@ -148,6 +148,31 @@ if (Test-Path $claudeCmd) {
 }
 
 # ============================================================
+# 6. Create Junction: ~/.claude -> cloud claude_config/
+# ============================================================
+$claudeConfigDir = Join-Path $root "cladue_code\claude_config"
+$claudeHome = Join-Path $env:USERPROFILE ".claude"
+Write-Step "Linking ~/.claude to cloud config"
+$existing = Get-Item $claudeHome -ErrorAction SilentlyContinue
+if ($existing -and $existing.Attributes -match "ReparsePoint") {
+    Write-Skip "Junction already exists"
+} else {
+    if (-not (Test-Path $claudeConfigDir)) {
+        New-Item -ItemType Directory -Path $claudeConfigDir -Force | Out-Null
+    }
+    if (Test-Path $claudeHome) {
+        # Back up existing config if not a junction
+        $backup = "$claudeHome.bak"
+        Write-Host "  Backing up existing ~/.claude to ~/.claude.bak"
+        if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
+        Move-Item $claudeHome $backup
+    }
+    $result = & cmd /c mklink /J `"$claudeHome`" `"$claudeConfigDir`" 2>&1
+    if (Test-Path $claudeHome) { Write-OK "Junction created: ~/.claude -> cloud config" }
+    else { Write-Err "Failed to create junction: $result" }
+}
+
+# ============================================================
 # Verify all
 # ============================================================
 Write-Host ""
