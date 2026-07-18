@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 if (-not $root) { $root = Get-Location }
-$toolsDir = Join-Path $root "tools"
+$toolsDir = Join-Path $root "cladue_code\tools"
 
 function Write-Step($msg) { Write-Host "[setup] $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "  [OK] $msg" -ForegroundColor Green }
