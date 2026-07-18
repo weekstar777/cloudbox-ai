@@ -24,7 +24,7 @@ cloudbox-ai/
     ├── .claude/                 Claude Code 配置
     ├── .codex/                  Codex 配置
     ├── .gemini/                 Gemini 配置
-    ├── .opencode/               OpenCode 配置
+    ├── opencode/                OpenCode 配置
     ├── .openclaw/               OpenClaw 配置
     └── .hermes/                 Hermes 配置
 ```
