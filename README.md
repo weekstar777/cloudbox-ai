@@ -20,13 +20,13 @@ cloudbox-ai/
 │   └── ccswitch/                CCswitch
 │
 └── configs/              AI 工具配置（不入库，含密钥）
-    ├── cc-switch/               CCswitch 配置
-    ├── claude/                  Claude Code 配置
-    ├── codex/                   Codex 配置
-    ├── gemini/                  Gemini 配置
-    ├── opencode/                OpenCode 配置
-    ├── openclaw/                OpenClaw 配置
-    └── hermes/                  Hermes 配置
+    ├── .cc-switch/              CCswitch 配置
+    ├── .claude/                 Claude Code 配置
+    ├── .codex/                  Codex 配置
+    ├── .gemini/                 Gemini 配置
+    ├── .opencode/               OpenCode 配置
+    ├── .openclaw/               OpenClaw 配置
+    └── .hermes/                 Hermes 配置
 ```
 
 ## 快速开始
