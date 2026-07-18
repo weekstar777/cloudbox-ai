@@ -12,13 +12,12 @@ cloudbox-ai/
 ├── LICENSE               GPL v3
 ├── .gitignore
 │
-├── cladue_code/          Claude Code 便携环境
-│   ├── 启动.bat          启动 Claude Code（双击）
-│   └── tools/            （自动安装，不入库）
-│       ├── node-v22.14.0-win-x64/   Node.js + claude CLI
-│       ├── python-full/             Python 完整版
-│       ├── git-full/                Git 完整版
-│       └── ccswitch/                CCswitch
+├── 启动.bat              启动 Claude Code（双击）
+├── tools/                （自动安装，不入库）
+│   ├── node-v22.14.0-win-x64/   Node.js + claude CLI
+│   ├── python-full/             Python 完整版
+│   ├── git-full/                Git 完整版
+│   └── ccswitch/                CCswitch
 │
 ├── gemini/               （预留）
 └── codex/                （预留）
@@ -28,7 +27,7 @@ cloudbox-ai/
 
 ### 1. 安装依赖
 
-双击 `setup.bat`，自动下载并安装到 `cladue_code/tools/`：
+双击 `setup.bat`，自动下载并安装到 `tools/`：
 
 - Node.js v22.14.0
 - Python 3.12.8（含 pip）
@@ -40,7 +39,7 @@ cloudbox-ai/
 
 ### 2. 配置中转 API
 
-进入 `cladue_code/`，双击 `启动.bat`，在打开的命令行中运行：
+双击 `启动.bat`，在打开的命令行中运行：
 
 ```
 cc-switch
@@ -52,15 +51,15 @@ cc-switch
 
 ### 3. 使用
 
-双击 `cladue_code/启动.bat`，输入 `claude`。
+双击 `启动.bat`，输入 `claude`。
 
 ## 手动安装（可选）
 
-1. **Node.js**：https://nodejs.org/dist/v22.14.0/node-v22.14.0-win-x64.zip → 解压到 `cladue_code/tools/node-v22.14.0-win-x64/`
+1. **Node.js**：https://nodejs.org/dist/v22.14.0/node-v22.14.0-win-x64.zip → 解压到 `tools/node-v22.14.0-win-x64/`
 2. **预装 claude**：在该目录下执行 `npm.cmd install -g @anthropic-ai/claude-code`
-3. **Python**：官网完整版 → `cladue_code/tools/python-full/`
-4. **Git**：官网 Git → `cladue_code/tools/git-full/`
-5. **CCswitch**：从 [GitHub releases](https://github.com/farion1231/cc-switch/releases) 下载 Windows Portable → `cladue_code/tools/ccswitch/`
+3. **Python**：官网完整版 → `tools/python-full/`
+4. **Git**：官网 Git → `tools/git-full/`
+5. **CCswitch**：从 [GitHub releases](https://github.com/farion1231/cc-switch/releases) 下载 Windows Portable → `tools/ccswitch/`
 
 ## 许可证
 
