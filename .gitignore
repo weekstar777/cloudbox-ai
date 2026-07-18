@@ -1,31 +1,11 @@
-# 便携工具（体积大，不入库）
+# 便携工具（体积大，不入库，按 README 自行下载/安装）
 tools/
 
-# 含明文 API 密钥，不入库（靠百度网盘同步）
-cladue_code/claude_config/settings.json
-
-# Claude Code 项目级本地配置（运行时生成，不入库）
+# Claude 本地配置（含 API 密钥，绝不入库）
 .claude/
-**/.claude/
-
-# claude_config 里的缓存/运行时文件
-cladue_code/claude_config/cache/
-cladue_code/claude_config/sessions/
-cladue_code/claude_config/session-env/
-cladue_code/claude_config/shell-snapshots/
-cladue_code/claude_config/telemetry/
-cladue_code/claude_config/backups/
-cladue_code/claude_config/daemon/
-cladue_code/claude_config/daemon.lock
-cladue_code/claude_config/daemon.log
-cladue_code/claude_config/daemon.status.json
-cladue_code/claude_config/history.jsonl
-cladue_code/claude_config/file-history/
-cladue_code/claude_config/jobs/
-cladue_code/claude_config/plugins/
-cladue_code/claude_config/projects/
-cladue_code/claude_config/.last-cleanup
-cladue_code/claude_config/.last-update-result.json
+claude_config/
+*.env
+settings.json
 
 # 临时文件
 *.tmp
