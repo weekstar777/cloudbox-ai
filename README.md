@@ -58,13 +58,8 @@ cloudbox-ai/
 **配置用户级环境变量：**
 
 - `CLAUDE_CONFIG_DIR` → `configs\.claude`
-- `CODEX_HOME` → `configs\.codex`
-- `CC_SWITCH_CONFIG_DIR` → `configs\.cc-switch`
-- `GEMINI_HOME` → `configs\.gemini`
-- `OPENCODE_HOME` → `configs\opencode`
-- `OPENCLAW_HOME` → `configs\.openclaw`
-- `HERMES_HOME` → `configs\.hermes`
 - 将便携 Node.js 路径加入用户 `PATH`
+- 其他工具的配置目录由 CCswitch 管理
 
 已安装的工具自动跳过，可重复运行。换机器后重新运行即可自动配置。
 
@@ -125,7 +120,7 @@ git         - Git 2.47.1
 
 双击 `cleanup.bat`，一键清除本机所有 cloudbox-ai 相关痕迹：
 
-- 用户级环境变量（`CLAUDE_CONFIG_DIR`、`CODEX_HOME` 等全部 7 个）
+- 用户级环境变量（`CLAUDE_CONFIG_DIR`）
 - 用户/系统 `PATH` 中的 cloudbox-ai 条目（系统 PATH 需管理员权限）
 
 > 仅清理环境变量和 PATH，不卸载程序、不删除任何文件。如需彻底清除，手动删除 cloudbox-ai 文件夹即可。

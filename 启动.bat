@@ -22,14 +22,8 @@ echo.
 
 set "PATH=%ROOT%\tools\node-v22.14.0-win-x64;%ROOT%\tools\python-full;%ROOT%\tools\python-full\Scripts;%ROOT%\tools\git-full\cmd;%ROOT%\tools\ccswitch;%PATH%"
 
-rem Config dirs (portable, all pointing into configs\)
+rem Config dirs (other tools' config dirs are managed by CCswitch)
 set "CLAUDE_CONFIG_DIR=%ROOT%\configs\.claude"
-set "CODEX_HOME=%ROOT%\configs\.codex"
-set "CC_SWITCH_CONFIG_DIR=%ROOT%\configs\.cc-switch"
-set "GEMINI_HOME=%ROOT%\configs\.gemini"
-set "OPENCODE_HOME=%ROOT%\configs\opencode"
-set "OPENCLAW_HOME=%ROOT%\configs\.openclaw"
-set "HERMES_HOME=%ROOT%\configs\.hermes"
 
 echo Environment ready
 echo.

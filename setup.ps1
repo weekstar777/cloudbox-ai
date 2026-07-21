@@ -249,12 +249,6 @@ Write-Step "Setting user-level environment variables"
 
 $envVars = @{
     "CLAUDE_CONFIG_DIR"    = Join-Path $root "configs\.claude"
-    "CODEX_HOME"           = Join-Path $root "configs\.codex"
-    "CC_SWITCH_CONFIG_DIR" = Join-Path $root "configs\.cc-switch"
-    "GEMINI_HOME"          = Join-Path $root "configs\.gemini"
-    "OPENCODE_HOME"        = Join-Path $root "configs\opencode"
-    "OPENCLAW_HOME"        = Join-Path $root "configs\.openclaw"
-    "HERMES_HOME"          = Join-Path $root "configs\.hermes"
 }
 
 foreach ($name in $envVars.Keys) {
