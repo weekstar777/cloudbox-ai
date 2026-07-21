@@ -171,6 +171,47 @@ if (Test-Path $claudeCmd) {
 }
 
 # ============================================================
+# 6. Set user-level environment variables (portable config dirs)
+# ============================================================
+Write-Step "Setting user-level environment variables"
+
+$envVars = @{
+    "CLAUDE_CONFIG_DIR"    = Join-Path $root "configs\.claude"
+}
+
+foreach ($name in $envVars.Keys) {
+    $desired = $envVars[$name]
+    $current = [System.Environment]::GetEnvironmentVariable($name, 'User')
+    if ($current -ne $desired) {
+        [System.Environment]::SetEnvironmentVariable($name, $desired, 'User')
+        Write-OK "$name = $desired"
+    } else {
+        Write-Skip "$name"
+    }
+}
+
+# Add portable Node.js to user PATH (if not already present)
+$nodeAbsDir = $nodeDir
+$userPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+$pathEntries = $userPath -split ';' | Where-Object { $_.Trim() -ne '' }
+
+# Remove stale cloudbox node paths (old versions)
+$cleanedEntries = $pathEntries | Where-Object { $_ -notmatch 'cloudbox-ai\\tools\\node-' }
+# Add current portable node path
+if ($cleanedEntries -notcontains $nodeAbsDir) {
+    $cleanedEntries = @($nodeAbsDir) + $cleanedEntries
+    Write-OK "Added $nodeAbsDir to user PATH"
+} else {
+    Write-Skip "Node.js in user PATH"
+}
+$newPath = ($cleanedEntries | Select-Object -Unique) -join ';'
+if ($newPath -ne $userPath) {
+    [System.Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+}
+
+Write-OK "Environment variables configured"
+
+# ============================================================
 # Verify all
 # ============================================================
 Write-Host ""

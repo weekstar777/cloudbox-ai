@@ -11,6 +11,10 @@ set "ROOT=%~dp0"
 set "ROOT=%ROOT:~0,-1%"
 set "PATH=%ROOT%\tools\node-v22.14.0-win-x64;%ROOT%\tools\python-full;%ROOT%\tools\python-full\Scripts;%ROOT%\tools\git-full\cmd;%ROOT%\tools\ccswitch;%PATH%"
 
+rem Config dirs (portable, resolved from this folder's own location)
+rem Other tools' config dirs are managed by CCswitch internally
+set "CLAUDE_CONFIG_DIR=%ROOT%\configs\.claude"
+
 echo Environment ready
 echo.
 echo Available commands:
