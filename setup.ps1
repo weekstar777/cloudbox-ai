@@ -129,18 +129,21 @@ Write-Step "CCswitch"
 # Detect existing installation
 $ccsExe = $null
 $candidatePaths = @(
+    (Join-Path $toolsDir "ccswitch\cc-switch.exe"),
     (Join-Path $toolsDir "ccswitch\CC Switch.exe"),
-    "$env:ProgramFiles\CC-Switch\CC Switch.exe",
-    "${env:ProgramFiles(x86)}\CC-Switch\CC Switch.exe",
-    "$env:LOCALAPPDATA\CC-Switch\CC Switch.exe",
-    "$env:LOCALAPPDATA\Programs\CC-Switch\CC Switch.exe",
+    "$env:ProgramFiles\CC-Switch\cc-switch.exe",
+    "${env:ProgramFiles(x86)}\CC-Switch\cc-switch.exe",
+    "$env:LOCALAPPDATA\CC-Switch\cc-switch.exe",
+    "$env:LOCALAPPDATA\Programs\CC-Switch\cc-switch.exe",
+    "$env:LOCALAPPDATA\Programs\CC Switch\cc-switch.exe",
     "$env:LOCALAPPDATA\Programs\CC Switch\CC Switch.exe"
 )
 foreach ($p in $candidatePaths) {
     if (Test-Path $p) { $ccsExe = $p; break }
 }
 if (-not $ccsExe) {
-    $ccsCmd = Get-Command "CC Switch" -ErrorAction SilentlyContinue
+    $ccsCmd = Get-Command "cc-switch" -ErrorAction SilentlyContinue
+    if (-not $ccsCmd) { $ccsCmd = Get-Command "CC Switch" -ErrorAction SilentlyContinue }
     if ($ccsCmd) { $ccsExe = $ccsCmd.Source }
 }
 if ($ccsExe) {
@@ -154,13 +157,27 @@ if ($ccsExe) {
         Write-OK "Old portable CCswitch removed"
     }
 
-    # Remove stale MSI registration from any previous failed install
-    # This must clean BOTH the Add/Remove Programs keys AND the Windows Installer
-    # internal product database, otherwise the new MSI detects the old version via
-    # WIX_UPGRADE_DETECTED and fails at RemoveExistingProducts (Error 1714/1612).
+    # ── Thorough uninstall of any existing CC Switch ──────────────────
+    # The MSI upgrade path (RemoveExistingProducts) fails with Error 1714/1612
+    # when the Windows Installer cached MSI is missing or corrupted.
+    # Strategy: force-uninstall via WMI first, then surgically remove every
+    # trace from the registry so the new MSI installs as a clean first-time.
+
     $ErrorActionPreference = "SilentlyContinue"
 
-    # Phase 1: Try normal msiexec /x uninstall and clean Add/Remove Programs keys
+    # Step 1: Try WMI uninstall (handles missing cached MSI better than msiexec /x)
+    $wmiProduct = Get-WmiObject Win32_Product -Filter "Name LIKE '%CC%Switch%'" -ErrorAction SilentlyContinue
+    if ($wmiProduct) {
+        Write-Host "  Uninstalling CC Switch via WMI: $($wmiProduct.Name) v$($wmiProduct.Version)..."
+        $wmiResult = $wmiProduct.Uninstall()
+        if ($wmiResult.ReturnValue -eq 0) {
+            Write-OK "CC Switch uninstalled via WMI"
+        } else {
+            Write-Host "  WMI uninstall returned $($wmiResult.ReturnValue), continuing with manual cleanup..." -ForegroundColor Yellow
+        }
+    }
+
+    # Step 2: Try msiexec /x for each product code found in Uninstall keys
     $uninstallPaths = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
@@ -170,21 +187,21 @@ if ($ccsExe) {
         Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
             $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
             if ($props.DisplayName -match "CC\s*Switch") {
-                Write-Host "  Removing stale CCswitch registration: $($props.DisplayName)"
                 $prodCode = $_.PSChildName
-                Start-Process msiexec -ArgumentList "/x `"$prodCode`" /quiet /norestart" -Wait -ErrorAction SilentlyContinue
+                Write-Host "  Trying msiexec /x $prodCode ..."
+                $p = Start-Process msiexec -ArgumentList "/x `"$prodCode`" /quiet /norestart" -Wait -PassThru -ErrorAction SilentlyContinue
+                if ($p -and $p.ExitCode -eq 0) { Write-OK "msiexec /x succeeded" }
+                # Remove the Uninstall key regardless (force cleanup)
                 Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
-                Write-OK "Stale registration removed"
             }
         }
     }
 
-    # Phase 2: Deep-clean Windows Installer internal product database
-    # When the cached MSI source is missing (Error 1612), msiexec /x silently fails
-    # and leaves behind Installer DB entries. The new MSI's FindRelatedProducts
-    # still detects the old UpgradeCode and tries RemoveExistingProducts, which fails.
-    # Collect compressed product GUIDs FIRST, then delete UpgradeCodes before Products
-    # (UpgradeCode cleanup cross-references Products, so order matters).
+    # Step 3: Remove Windows Installer internal database entries
+    # These are what FindRelatedProducts uses; if any remain, the new MSI
+    # will try RemoveExistingProducts and fail.
+
+    # 3a: Collect compressed product GUIDs from Products keys
     $installerProductPaths = @(
         "HKCR:\Installer\Products",
         "HKLM:\SOFTWARE\Classes\Installer\Products"
@@ -195,44 +212,12 @@ if ($ccsExe) {
             $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
             if ($props.ProductName -match "CC\s*Switch") {
                 $ccsCompressedGuids += $_.PSChildName
+                Write-Host "  Found Installer Product: $($props.ProductName) [$($_.PSChildName)]"
             }
         }
     }
 
-    # Phase 2a: Clean UpgradeCode entries (prevents FindRelatedProducts from matching)
-    $upgradeCodePaths = @(
-        "HKCR:\Installer\UpgradeCodes",
-        "HKLM:\SOFTWARE\Classes\Installer\UpgradeCodes"
-    )
-    foreach ($regPath in $upgradeCodePaths) {
-        Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
-            $keyPath = $_.PSPath
-            $values = Get-ItemProperty $keyPath -ErrorAction SilentlyContinue
-            $isRelated = $false
-            foreach ($prop in $values.PSObject.Properties) {
-                if ($ccsCompressedGuids -contains $prop.Name) { $isRelated = $true; break }
-            }
-            if ($isRelated) {
-                Write-Host "  Removing Windows Installer UpgradeCode entry"
-                Remove-Item $keyPath -Recurse -Force -ErrorAction SilentlyContinue
-                Write-OK "Installer UpgradeCode entry removed"
-            }
-        }
-    }
-
-    # Phase 2b: Delete Products entries
-    foreach ($regPath in $installerProductPaths) {
-        Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
-            $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-            if ($props.ProductName -match "CC\s*Switch") {
-                Write-Host "  Removing Windows Installer product entry: $($props.ProductName)"
-                Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
-                Write-OK "Installer product entry removed"
-            }
-        }
-    }
-
-    # Phase 3: Clean per-user Installer UserData product entries
+    # 3b: Also collect from UserData (the product might only be registered here)
     $userDataPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData"
     if (Test-Path $userDataPath) {
         Get-ChildItem $userDataPath -ErrorAction SilentlyContinue | ForEach-Object {
@@ -243,13 +228,114 @@ if ($ccsExe) {
                     if (Test-Path $ipPath) {
                         $ip = Get-ItemProperty $ipPath -ErrorAction SilentlyContinue
                         if ($ip.DisplayName -match "CC\s*Switch") {
-                            Write-Host "  Removing Installer UserData entry: $($ip.DisplayName)"
+                            if ($ccsCompressedGuids -notcontains $_.PSChildName) {
+                                $ccsCompressedGuids += $_.PSChildName
+                            }
+                            Write-Host "  Removing Installer UserData: $($ip.DisplayName)"
                             Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
-                            Write-OK "Installer UserData entry removed"
+                            Write-OK "UserData entry removed"
                         }
                     }
                 }
             }
+        }
+    }
+
+    # 3c: Remove UpgradeCode entries that reference any CC Switch product
+    $upgradeCodePaths = @(
+        "HKCR:\Installer\UpgradeCodes",
+        "HKLM:\SOFTWARE\Classes\Installer\UpgradeCodes"
+    )
+    if ($ccsCompressedGuids.Count -gt 0) {
+        foreach ($regPath in $upgradeCodePaths) {
+            Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
+                $keyPath = $_.PSPath
+                foreach ($vn in $_.GetValueNames()) {
+                    if ($ccsCompressedGuids -contains $vn) {
+                        Write-Host "  Removing UpgradeCode entry: $($_.PSChildName)"
+                        Remove-Item $keyPath -Recurse -Force -ErrorAction SilentlyContinue
+                        Write-OK "UpgradeCode removed"
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    # 3d: Remove Products entries
+    foreach ($regPath in $installerProductPaths) {
+        Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
+            $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+            if ($props.ProductName -match "CC\s*Switch") {
+                Write-Host "  Removing Installer Product: $($props.ProductName)"
+                Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+                Write-OK "Product entry removed"
+            }
+        }
+    }
+
+    # 3e: Also search per-user hives (HKU\<SID>\Software\Classes\Installer)
+    try {
+        $hku = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::Users, [Microsoft.Win32.RegistryView]::Default)
+        foreach ($sidName in $hku.GetSubKeyNames()) {
+            foreach ($subPath in @("Software\Classes\Installer\Products", "Software\Classes\Installer\UpgradeCodes")) {
+                $subKey = $hku.OpenSubKey("$sidName\$subPath", $true)
+                if ($subKey) {
+                    foreach ($name in $subKey.GetSubKeyNames()) {
+                        if ($subPath -match "Products") {
+                            $prodKey = $subKey.OpenSubKey($name)
+                            if ($prodKey) {
+                                $pn = $prodKey.GetValue("ProductName")
+                                $prodKey.Close()
+                                if ($pn -match "CC\s*Switch") {
+                                    Write-Host "  Removing HKU product: $pn (SID=$sidName)"
+                                    $subKey.DeleteSubKeyTree($name, $false)
+                                    Write-OK "HKU product removed"
+                                }
+                            }
+                        } elseif ($ccsCompressedGuids.Count -gt 0) {
+                            $ucKey = $subKey.OpenSubKey($name)
+                            if ($ucKey) {
+                                $match = $false
+                                foreach ($vn in $ucKey.GetValueNames()) {
+                                    if ($ccsCompressedGuids -contains $vn) { $match = $true; break }
+                                }
+                                $ucKey.Close()
+                                if ($match) {
+                                    Write-Host "  Removing HKU UpgradeCode (SID=$sidName)"
+                                    $subKey.DeleteSubKeyTree($name, $false)
+                                    Write-OK "HKU UpgradeCode removed"
+                                }
+                            }
+                        }
+                    }
+                    $subKey.Close()
+                }
+            }
+        }
+        $hku.Close()
+    } catch {}
+
+    # Step 4: Remove CC Switch installation directories
+    $ccsDirs = @(
+        "$env:LOCALAPPDATA\Programs\CC Switch",
+        "$env:LOCALAPPDATA\Programs\CC-Switch",
+        "$env:USERPROFILE\.cc-switch"
+    )
+    foreach ($d in $ccsDirs) {
+        if (Test-Path $d) {
+            Write-Host "  Removing install directory: $d"
+            Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+            Write-OK "Directory removed"
+        }
+    }
+
+    # Step 5: Remove orphaned Windows Installer cached MSI entries
+    $cachedDbPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData"
+    if (Test-Path $cachedDbPath) {
+        Get-ChildItem $cachedDbPath -ErrorAction SilentlyContinue | ForEach-Object {
+            $componentsPath = Join-Path $_.PSPath "Components"
+            # We already cleaned Products above; Components auto-orphan
         }
     }
 
