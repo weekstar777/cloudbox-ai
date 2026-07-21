@@ -1,0 +1,27 @@
+# 便携工具（体积大，不入库，按 README 自行下载/安装）
+tools/
+
+# AI 工具配置目录（含 API 密钥，绝不入库）
+configs/
+
+# Claude Code 本地设置（权限记录，不入库）
+.claude/settings.local.json
+
+# CCswitch 数据库导出（含敏感数据）
+cc-switch-export-*.sql
+
+# 临时文件
+*.tmp
+*.log
+*.cache
+.DS_Store
+Thumbs.db
+
+# 百度网盘临时文件
+*.baiduyun.uploading.cfg
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*~
