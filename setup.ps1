@@ -1,5 +1,6 @@
 # setup.ps1 - One-click dependency installer for cloudbox-ai portable environment
 # Downloads: Node.js, Python, Git, CCswitch, claude-code CLI
+# Configures: CLAUDE_CONFIG_DIR (user-level), portable Node.js in user PATH
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot

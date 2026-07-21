@@ -14,8 +14,10 @@
 
 ```
 cloudbox-ai/
-├── setup.bat             一键安装所有依赖（双击）
+├── setup.bat             一键安装所有依赖 + 配置环境变量（双击）
 ├── setup.ps1             安装核心逻辑
+├── cleanup.bat           离机清痕（双击）
+├── cleanup.ps1           清理核心逻辑
 ├── 启动.bat              启动便携环境（双击）
 ├── README.md
 ├── LICENSE               GPL v3
@@ -24,7 +26,7 @@ cloudbox-ai/
 ├── tools/                （自动安装，不入库）
 │   ├── node-v22.14.0-win-x64/   Node.js + claude CLI
 │   ├── python-full/             Python 完整版
-│   ├── git-full/                Git 完整版
+│   ├── git-full/                Git (PortableGit)
 │   └── ccswitch/                CCswitch
 │
 └── configs/              AI 工具配置（不入库，含密钥）
@@ -41,19 +43,28 @@ cloudbox-ai/
 
 ### 1. 安装依赖
 
-双击 `setup.bat`，自动下载并安装到 `tools/`：
+双击 `setup.bat`，自动完成以下操作：
 
-- Node.js v22.14.0
+**下载并安装到 `tools/`：**
+
+- Node.js v22.14.0（便携 zip）
 - Python 3.12.8（含 pip）
 - Git (PortableGit 2.47.1)
-- CCswitch（从 GitHub 获取最新版）
+- CCswitch（从 GitHub 获取最新 Portable 版）
 - claude-code CLI（预装到便携 Node）
 
-已安装的工具自动跳过，可重复运行。
+**配置用户级环境变量：**
 
-### 2. 配置目录（云同步）
+- `CLAUDE_CONFIG_DIR` → 指向 `configs\.claude`
+- 将便携 Node.js 路径加入用户 `PATH`
 
-打开 CCswitch → 设置 → 高级 → **配置文件目录**，将各工具的配置目录修改为本项目下的 `configs/` 子目录：
+已安装的工具自动跳过，可重复运行。换机器后重新运行即可自动配置。
+
+### 2. 配置 CCswitch
+
+安装 [CCswitch MSI 版](https://github.com/farion1231/cc-switch/releases)（推荐，支持自动更新）。
+
+打开 CCswitch → 设置 → 高级 → **配置文件目录**，将各工具的配置目录指向 `configs/` 子目录：
 
 | 配置项 | 路径 |
 |--------|------|
@@ -65,7 +76,7 @@ cloudbox-ai/
 | OpenClaw 配置目录 | `<本项目路径>\configs\.openclaw` |
 | Hermes 配置目录 | `<本项目路径>\configs\.hermes` |
 
-> 将本项目放在云盘同步文件夹中（如百度网盘），配置即可自动同步到所有设备。换电脑后只需重新安装依赖 + 在 CCswitch 中重新指定目录即可。
+> `CLAUDE_CONFIG_DIR` 由 `setup.bat` 自动设置为用户级环境变量，CCswitch 和 Claude Code 都能直接识别。其他工具的配置目录由 CCswitch 内部管理。
 
 ### 3. 配置中转 API
 
@@ -92,13 +103,41 @@ python      - Python 3.12.8
 git         - Git 2.47.1
 ```
 
+## 换机器
+
+在新机器上：
+
+1. 将 `cloudbox-ai` 文件夹复制过去（或通过云盘同步）
+2. 双击 `setup.bat` → 自动安装依赖 + 配置环境变量
+3. 安装 CCswitch MSI → 在设置中指定配置目录
+
+在旧机器上（可选）：
+
+4. 双击 `cleanup.bat` → 清除本机环境变量、PATH、注册表残留
+
+## 离机清痕
+
+双击 `cleanup.bat`，一键清除本机所有 cloudbox-ai 相关痕迹：
+
+- 用户级环境变量（`CLAUDE_CONFIG_DIR` 等）
+- 用户/系统 `PATH` 中的 cloudbox-ai 条目
+- 注册表残留（Node.js、Python、Git 的软件键和卸载项）
+
+> 仅清理环境变量和注册表，不删除任何文件或卸载程序。
+
+## 云盘同步
+
+将本项目放在云盘同步文件夹中（如百度网盘），`configs/` 目录中的配置即可自动同步到所有设备。
+
+同步内容包括：API 密钥、工具配置、Claude Code 的项目配置和记忆等。
+
 ## 手动安装（可选）
 
 1. **Node.js**：https://nodejs.org/dist/v22.14.0/node-v22.14.0-win-x64.zip → 解压到 `tools/node-v22.14.0-win-x64/`
 2. **预装 claude**：在该目录下执行 `npm.cmd install -g @anthropic-ai/claude-code`
 3. **Python**：https://www.nuget.org/api/v2/package/python/3.12.8 → 解压到 `tools/python-full/`
 4. **Git**：PortableGit → `tools/git-full/`
-5. **CCswitch**：从 [GitHub releases](https://github.com/farion1231/cc-switch/releases) 下载 Windows Portable → `tools/ccswitch/`
+5. **CCswitch**：从 [GitHub releases](https://github.com/farion1231/cc-switch/releases) 下载 Windows MSI 安装
 
 ## 许可证
 

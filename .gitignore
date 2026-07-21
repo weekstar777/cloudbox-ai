@@ -3,9 +3,12 @@ tools/
 
 # AI 工具配置目录（含 API 密钥，绝不入库）
 configs/
-.claude/
-*.env
-settings.json
+
+# Claude Code 本地设置（权限记录，不入库）
+.claude/settings.local.json
+
+# CCswitch 数据库导出（含敏感数据）
+cc-switch-export-*.sql
 
 # 临时文件
 *.tmp
