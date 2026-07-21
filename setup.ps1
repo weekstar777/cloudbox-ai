@@ -330,15 +330,6 @@ if ($ccsExe) {
         }
     }
 
-    # Step 5: Remove orphaned Windows Installer cached MSI entries
-    $cachedDbPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData"
-    if (Test-Path $cachedDbPath) {
-        Get-ChildItem $cachedDbPath -ErrorAction SilentlyContinue | ForEach-Object {
-            $componentsPath = Join-Path $_.PSPath "Components"
-            # We already cleaned Products above; Components auto-orphan
-        }
-    }
-
     $ErrorActionPreference = "Stop"
 
     # Check for pending reboot

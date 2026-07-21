@@ -23,7 +23,6 @@ cloudbox-ai/
 ├── README.md
 ├── LICENSE               GPL v3
 ├── .gitignore
-├── .gitattributes
 │
 ├── tools/                （自动安装，不入库）
 │   ├── node-v22.14.0-win-x64/   Node.js + claude CLI
@@ -77,7 +76,7 @@ cloudbox-ai/
 | OpenClaw 配置目录 | `<本项目路径>\configs\.openclaw` |
 | Hermes 配置目录 | `<本项目路径>\configs\.hermes` |
 
-> 所有环境变量已由 `setup.bat` 自动设置为用户级，CCswitch 和各工具都能直接识别。
+> `CLAUDE_CONFIG_DIR` 已由 `setup.bat` 自动设置，其他工具的配置目录由 CCswitch 管理。
 
 ### 3. 配置中转 API
 

@@ -1,5 +1,5 @@
 # cleanup.ps1 - Remove all cloudbox-ai traces from this machine
-# Cleans: user env vars, user/system PATH entries, CCswitch MSI
+# Cleans: user env vars, user/system PATH entries
 # Does NOT uninstall Node.js/Python/Git (they are portable, just delete tools/)
 # Does NOT delete any files/folders
 
