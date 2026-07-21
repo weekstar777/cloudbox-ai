@@ -119,7 +119,7 @@ git         - Git 2.47.1
 
 在旧机器上（可选）：
 
-4. 双击 `cleanup.bat` → 清除本机环境变量、PATH、卸载 CCswitch
+4. 双击 `cleanup.bat` → 清除本机环境变量、PATH
 
 ## 离机清痕
 
@@ -127,9 +127,8 @@ git         - Git 2.47.1
 
 - 用户级环境变量（`CLAUDE_CONFIG_DIR`、`CODEX_HOME` 等全部 7 个）
 - 用户/系统 `PATH` 中的 cloudbox-ai 条目（系统 PATH 需管理员权限）
-- 卸载 CCswitch（MSI 静默卸载）
 
-> 仅清理环境变量和卸载 CCswitch，不删除任何文件。如需彻底清除，手动删除 cloudbox-ai 文件夹即可。
+> 仅清理环境变量和 PATH，不卸载程序、不删除任何文件。如需彻底清除，手动删除 cloudbox-ai 文件夹即可。
 
 ## 云盘同步
 

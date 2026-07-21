@@ -84,35 +84,6 @@ if ($removed -gt 0) {
 }
 
 # ============================================================
-# 4. Uninstall CCswitch (MSI)
-# ============================================================
-Write-Step "CCswitch MSI"
-
-$ccsUninstalled = $false
-$uninstallPaths = @(
-    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
-    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
-)
-foreach ($regPath in $uninstallPaths) {
-    Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
-        $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-        if ($props.DisplayName -match "CC\s*Switch") {
-            $code = $_.PSChildName
-            Write-Host "  Uninstalling: $($props.DisplayName)..."
-            $proc = Start-Process msiexec -ArgumentList "/x `"$code`" /quiet /norestart" -Wait -PassThru
-            if ($proc.ExitCode -eq 0) {
-                Write-OK "CCswitch uninstalled"
-                $ccsUninstalled = $true
-            } else {
-                Write-Warn "CCswitch uninstall returned exit code $($proc.ExitCode)"
-            }
-        }
-    }
-}
-if (-not $ccsUninstalled) { Write-Skip "CCswitch MSI" }
-
-# ============================================================
 # Done
 # ============================================================
 Write-Host ""
