@@ -1,9 +1,16 @@
 # setup.ps1 - One-click dependency installer for cloudbox-ai portable environment
+<<<<<<< HEAD
 # Downloads: Node.js, Python, Git, CCswitch (MSI full installer), claude-code CLI
 # Configures: CLAUDE_CONFIG_DIR (user-level), portable Node.js in user PATH
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+=======
+# Downloads: Node.js, Python, Git, CCswitch, claude-code CLI
+# Configures: CLAUDE_CONFIG_DIR (user-level), portable Node.js in user PATH
+
+$ErrorActionPreference = "Stop"
+>>>>>>> ae99286c746c46257465c70671cd5d8063c7ba63
 $root = $PSScriptRoot
 if (-not $root) { $root = Get-Location }
 $toolsDir = Join-Path $root "tools"
@@ -19,9 +26,14 @@ function Download-File($url, $out) {
     try {
         Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
     } catch {
+<<<<<<< HEAD
         Write-Host "  Invoke-WebRequest failed, trying curl.exe..." -ForegroundColor Yellow
         $ErrorActionPreference = "SilentlyContinue"
         & curl.exe -L -o $out $url
+=======
+        $ErrorActionPreference = "SilentlyContinue"
+        & curl.exe -L -o $out $url 2>$null
+>>>>>>> ae99286c746c46257465c70671cd5d8063c7ba63
         $ErrorActionPreference = "Stop"
     }
     $ProgressPreference = "Continue"
@@ -123,6 +135,7 @@ if (Test-Path (Join-Path $gitDir "cmd\git.exe")) {
 }
 
 # ============================================================
+<<<<<<< HEAD
 # 4. CCswitch (latest MSI from GitHub)
 # ============================================================
 Write-Step "CCswitch"
@@ -220,6 +233,35 @@ if ($ccsExe) {
             }
         } else {
             Write-Err "Windows MSI asset not found in release"
+=======
+# 4. CCswitch (latest from GitHub)
+# ============================================================
+$ccsDir = Join-Path $toolsDir "ccswitch"
+Write-Step "CCswitch"
+if (Test-Path (Join-Path $ccsDir "*.exe")) {
+    Write-Skip "CCswitch"
+} else {
+    Write-Host "  Querying GitHub for latest release..."
+    try {
+        $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/farion1231/cc-switch/releases/latest" -UseBasicParsing
+        $asset = $rel.assets | Where-Object { $_.name -match "Windows-Portable.zip" -and $_.name -notmatch "arm64" } | Select-Object -First 1
+        if ($asset) {
+            $zip = Join-Path $toolsDir "ccswitch.zip"
+            Download-File $asset.browser_download_url $zip
+            Write-Host "  Extracting..."
+            if (Test-Path $ccsDir) { Remove-Item $ccsDir -Recurse -Force }
+            Expand-Archive -Path $zip -DestinationPath $ccsDir -Force
+            Remove-Item $zip -Force
+            # Flatten subdirectory if exists
+            $sub = Get-ChildItem $ccsDir -Directory | Select-Object -First 1
+            if ($sub -and -not (Test-Path (Join-Path $ccsDir "*.exe"))) {
+                Get-ChildItem $sub.FullName | Move-Item -Destination $ccsDir -Force
+                Remove-Item $sub.FullName -Force -Recurse -ErrorAction SilentlyContinue
+            }
+            Write-OK "CCswitch installed"
+        } else {
+            Write-Err "Windows Portable asset not found in release"
+>>>>>>> ae99286c746c46257465c70671cd5d8063c7ba63
         }
     } catch {
         Write-Err "GitHub query failed: $_"
@@ -237,7 +279,11 @@ if (Test-Path $claudeCmd) {
     Write-Host "  Installing via npm (may take a few minutes)..."
     $env:PATH = "$nodeDir;$env:PATH"
     $ErrorActionPreference = "SilentlyContinue"
+<<<<<<< HEAD
     & (Join-Path $nodeDir "npm.cmd") install -g "@anthropic-ai/claude-code" | Out-Null
+=======
+    & (Join-Path $nodeDir "npm.cmd") install -g "@anthropic-ai/claude-code" 2>&1 | Out-Null
+>>>>>>> ae99286c746c46257465c70671cd5d8063c7ba63
     $ErrorActionPreference = "Stop"
     if (Test-Path $claudeCmd) { Write-OK "claude-code CLI installed" }
     else { Write-Err "claude-code installation failed"; exit 1 }
@@ -250,12 +296,15 @@ Write-Step "Setting user-level environment variables"
 
 $envVars = @{
     "CLAUDE_CONFIG_DIR"    = Join-Path $root "configs\.claude"
+<<<<<<< HEAD
     "CODEX_HOME"           = Join-Path $root "configs\.codex"
     "CC_SWITCH_CONFIG_DIR" = Join-Path $root "configs\.cc-switch"
     "GEMINI_HOME"          = Join-Path $root "configs\.gemini"
     "OPENCODE_HOME"        = Join-Path $root "configs\opencode"
     "OPENCLAW_HOME"        = Join-Path $root "configs\.openclaw"
     "HERMES_HOME"          = Join-Path $root "configs\.hermes"
+=======
+>>>>>>> ae99286c746c46257465c70671cd5d8063c7ba63
 }
 
 foreach ($name in $envVars.Keys) {
@@ -298,10 +347,17 @@ Write-Step "Verification"
 $env:PATH = "$nodeDir;$pyDir;$(Join-Path $gitDir 'cmd');$env:PATH"
 
 $ErrorActionPreference = "SilentlyContinue"
+<<<<<<< HEAD
 $nv = & (Join-Path $nodeDir "node.exe") --version; Write-OK "Node.js $nv"
 $pv = & (Join-Path $pyDir "python.exe") --version; Write-OK "$pv"
 $gv = & (Join-Path $gitDir "cmd\git.exe") --version; Write-OK "$gv"
 $cv = & $claudeCmd --version; Write-OK "claude $cv"
+=======
+$nv = & (Join-Path $nodeDir "node.exe") --version 2>&1; Write-OK "Node.js $nv"
+$pv = & (Join-Path $pyDir "python.exe") --version 2>&1; Write-OK "$pv"
+$gv = & (Join-Path $gitDir "cmd\git.exe") --version 2>&1; Write-OK "$gv"
+$cv = & $claudeCmd --version 2>&1; Write-OK "claude $cv"
+>>>>>>> ae99286c746c46257465c70671cd5d8063c7ba63
 $ErrorActionPreference = "Stop"
 
 Write-Host ""
