@@ -155,7 +155,12 @@ if ($ccsExe) {
     }
 
     # Remove stale MSI registration from any previous failed install
+    # This must clean BOTH the Add/Remove Programs keys AND the Windows Installer
+    # internal product database, otherwise the new MSI detects the old version via
+    # WIX_UPGRADE_DETECTED and fails at RemoveExistingProducts (Error 1714/1612).
     $ErrorActionPreference = "SilentlyContinue"
+
+    # Phase 1: Try normal msiexec /x uninstall and clean Add/Remove Programs keys
     $uninstallPaths = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
@@ -173,6 +178,81 @@ if ($ccsExe) {
             }
         }
     }
+
+    # Phase 2: Deep-clean Windows Installer internal product database
+    # When the cached MSI source is missing (Error 1612), msiexec /x silently fails
+    # and leaves behind Installer DB entries. The new MSI's FindRelatedProducts
+    # still detects the old UpgradeCode and tries RemoveExistingProducts, which fails.
+    # Collect compressed product GUIDs FIRST, then delete UpgradeCodes before Products
+    # (UpgradeCode cleanup cross-references Products, so order matters).
+    $installerProductPaths = @(
+        "HKCR:\Installer\Products",
+        "HKLM:\SOFTWARE\Classes\Installer\Products"
+    )
+    $ccsCompressedGuids = @()
+    foreach ($regPath in $installerProductPaths) {
+        Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
+            $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+            if ($props.ProductName -match "CC\s*Switch") {
+                $ccsCompressedGuids += $_.PSChildName
+            }
+        }
+    }
+
+    # Phase 2a: Clean UpgradeCode entries (prevents FindRelatedProducts from matching)
+    $upgradeCodePaths = @(
+        "HKCR:\Installer\UpgradeCodes",
+        "HKLM:\SOFTWARE\Classes\Installer\UpgradeCodes"
+    )
+    foreach ($regPath in $upgradeCodePaths) {
+        Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
+            $keyPath = $_.PSPath
+            $values = Get-ItemProperty $keyPath -ErrorAction SilentlyContinue
+            $isRelated = $false
+            foreach ($prop in $values.PSObject.Properties) {
+                if ($ccsCompressedGuids -contains $prop.Name) { $isRelated = $true; break }
+            }
+            if ($isRelated) {
+                Write-Host "  Removing Windows Installer UpgradeCode entry"
+                Remove-Item $keyPath -Recurse -Force -ErrorAction SilentlyContinue
+                Write-OK "Installer UpgradeCode entry removed"
+            }
+        }
+    }
+
+    # Phase 2b: Delete Products entries
+    foreach ($regPath in $installerProductPaths) {
+        Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
+            $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+            if ($props.ProductName -match "CC\s*Switch") {
+                Write-Host "  Removing Windows Installer product entry: $($props.ProductName)"
+                Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+                Write-OK "Installer product entry removed"
+            }
+        }
+    }
+
+    # Phase 3: Clean per-user Installer UserData product entries
+    $userDataPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData"
+    if (Test-Path $userDataPath) {
+        Get-ChildItem $userDataPath -ErrorAction SilentlyContinue | ForEach-Object {
+            $productsPath = Join-Path $_.PSPath "Products"
+            if (Test-Path $productsPath) {
+                Get-ChildItem $productsPath -ErrorAction SilentlyContinue | ForEach-Object {
+                    $ipPath = Join-Path $_.PSPath "InstallProperties"
+                    if (Test-Path $ipPath) {
+                        $ip = Get-ItemProperty $ipPath -ErrorAction SilentlyContinue
+                        if ($ip.DisplayName -match "CC\s*Switch") {
+                            Write-Host "  Removing Installer UserData entry: $($ip.DisplayName)"
+                            Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+                            Write-OK "Installer UserData entry removed"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     $ErrorActionPreference = "Stop"
 
     # Check for pending reboot
