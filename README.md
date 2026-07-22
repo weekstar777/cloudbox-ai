@@ -28,7 +28,7 @@ cloudbox-ai/
 │   ├── node-v22.14.0-win-x64/   Node.js + claude CLI
 │   ├── python-full/             Python 完整版
 │   ├── git-full/                Git (PortableGit)
-│   └── ccswitch/                CCswitch (MSI 安装到此目录)
+│   └── CCswitch/                CCswitch（正规 MSI 安装后复制到此目录）
 │
 └── configs/              AI 工具配置（不入库，含密钥）
     ├── .cc-switch/              CCswitch 配置
@@ -51,7 +51,7 @@ cloudbox-ai/
 - Node.js v22.14.0（便携 zip）
 - Python 3.12.8（含 pip）
 - Git (PortableGit 2.47.1)
-- CCswitch（从 GitHub 获取最新 MSI 版，安装到 `tools/ccswitch/`）
+- CCswitch（从 GitHub 获取最新 MSI，正规安装后将程序复制到 `tools/CCswitch/`）
 - claude-code CLI（预装到便携 Node）
 
 **配置用户级环境变量：**
@@ -63,6 +63,10 @@ cloudbox-ai/
 已安装的工具自动跳过，可重复运行。换机器后重新运行即可自动配置。
 
 > **检查更新**：再次运行 `setup.bat` 时，CCswitch 和 claude-code 会自动比对版本，有新版则更新。Node.js、Python、Git 为便携版，保持已安装不变。
+
+> **关于 CCswitch 的安装方式**：该 MSI 由 Tauri/WiX 打包，安装目录被写死为 `%LOCALAPPDATA%\Programs\CC Switch`，命令行无法改。为了把程序统一放进 `tools/CCswitch/`，`setup.bat` 会先正规安装（保留开始菜单快捷方式，指向 `tools/CCswitch`），再把程序文件复制到 `tools/CCswitch/`，最后删除 `%LOCALAPPDATA%` 里的原目录。安装用的 MSI 下载到临时目录，装完即删，不占用项目空间。
+>
+> ⚠️ 由于原安装目录已被删除，**控制面板 → 程序和功能里的“CC Switch”卸载项已失效**（指向不存在的路径）。要卸载 CCswitch，直接删除 `tools/CCswitch/` 文件夹即可。
 
 ### 2. 配置 CCswitch
 
@@ -138,14 +142,16 @@ git         - Git 2.47.1
 2. **预装 claude**：在该目录下执行 `npm.cmd install -g @anthropic-ai/claude-code`
 3. **Python**：https://www.nuget.org/api/v2/package/python/3.12.8 → 解压到 `tools/python-full/`
 4. **Git**：https://github.com/git-for-windows/git/releases → 下载 PortableGit → 解压到 `tools/git-full/`
-5. **CCswitch**：从 [GitHub releases](https://github.com/farion1231/cc-switch/releases) 下载 Windows MSI → 安装时指定目录为 `tools/ccswitch/`
+5. **CCswitch**：从 [GitHub releases](https://github.com/farion1231/cc-switch/releases) 下载 Windows MSI → 双击正常安装（默认装到 `%LOCALAPPDATA%\Programs\CC Switch`）→ 将安装目录内的文件复制到 `tools/CCswitch/`（该 MSI 的安装目录写死，无法直接指定）
 
 ## 故障排查
 
 | 问题 | 解决方案 |
 |------|----------|
 | `setup.bat` 连接 GitHub 失败 | 检查网络连接，可能需要代理或重试 |
-| CCswitch MSI 安装 1603 错误 | 系统有挂起重启，先重启电脑再运行 `setup.bat` |
+| CCswitch MSI 安装 1603/1612 错误 | 通常是旧安装残留的注册表记录导致；`setup.bat` 会自动清理并重试。若仍失败，先重启电脑（清挂起重启）再运行 |
+| CCswitch 装完 `tools/CCswitch/` 里没有 exe | 旧版残留触发了空安装，重新运行 `setup.bat` 即可（已内置自愈） |
+| 控制面板无法卸载 CCswitch | 属正常现象，直接删除 `tools/CCswitch/` 文件夹即可 |
 | `cleanup.bat` 无法清理系统 PATH | 需要以管理员身份运行 |
 | `启动.bat` 报错工具未安装 | 先运行 `setup.bat` 安装依赖 |
 
