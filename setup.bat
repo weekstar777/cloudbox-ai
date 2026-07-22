@@ -8,8 +8,8 @@ echo.
 if errorlevel 1 (
     echo [FAILED] Setup encountered errors. See above.
 ) else (
-    echo [DONE] All dependencies installed successfully!
-    echo Run setup.bat again to check for updates.
+    echo [DONE] All dependencies ready!
+    echo Run setup.bat anytime to check for CCswitch / claude-code updates.
 )
 echo.
 pause

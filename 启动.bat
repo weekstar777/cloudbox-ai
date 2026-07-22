@@ -6,9 +6,15 @@ set "ROOT=%~dp0"
 set "ROOT=%ROOT:~0,-1%"
 
 rem Pre-flight check: verify tools are installed
-if not exist "%ROOT%\tools\node-v22.14.0-win-x64\node.exe" (
+set "MISSING="
+if not exist "%ROOT%\tools\node-v22.14.0-win-x64\node.exe" set "MISSING=%MISSING% Node.js"
+if not exist "%ROOT%\tools\python-full\python.exe" set "MISSING=%MISSING% Python"
+if not exist "%ROOT%\tools\git-full\cmd\git.exe" set "MISSING=%MISSING% Git"
+if not exist "%ROOT%\tools\ccswitch\cc-switch.exe" set "MISSING=%MISSING% CCswitch"
+if defined MISSING (
     echo.
-    echo [ERROR] Tools not installed. Please run setup.bat first.
+    echo [ERROR] Missing tools:%MISSING%
+    echo         Please run setup.bat first.
     echo.
     pause
     exit /b 1

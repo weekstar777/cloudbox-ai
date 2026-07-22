@@ -123,7 +123,7 @@ if (Test-Path (Join-Path $gitDir "cmd\git.exe")) {
 }
 
 # ============================================================
-# 4. CCswitch (latest MSI from GitHub)
+# 4. CCswitch (latest MSI from GitHub, auto-updates if newer)
 # ============================================================
 Write-Step "CCswitch"
 # Detect existing installation
@@ -146,8 +146,38 @@ if (-not $ccsExe) {
     if (-not $ccsCmd) { $ccsCmd = Get-Command "CC Switch" -ErrorAction SilentlyContinue }
     if ($ccsCmd) { $ccsExe = $ccsCmd.Source }
 }
+
+# Determine installed version and latest available version
+$installedVer = $null
 if ($ccsExe) {
-    Write-Skip "CCswitch"
+    try { $installedVer = [version]((Get-Item $ccsExe).VersionInfo.ProductVersion -replace '[^\d.].*$','') } catch {}
+}
+$latestVer = $null
+$latestAsset = $null
+try {
+    $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/farion1231/cc-switch/releases/latest" -UseBasicParsing
+    $latestAsset = $rel.assets | Where-Object { $_.name -match "Windows\.msi$" -and $_.name -notmatch "arm64" } | Select-Object -First 1
+    if ($rel.tag_name -match '(\d+\.\d+\.\d+)') { $latestVer = [version]$Matches[1] }
+} catch {
+    Write-Host "  [WARN] Could not query GitHub for latest version." -ForegroundColor Yellow
+}
+
+# Decide: skip (up to date), update (newer available), or install (not present)
+$needInstall = $false
+if ($ccsExe) {
+    if ($latestVer -and $installedVer -and $latestVer -gt $installedVer) {
+        Write-Host "  Update available: v$installedVer -> v$latestVer" -ForegroundColor Cyan
+        $needInstall = $true
+    } else {
+        $verText = if ($installedVer) { " (v$installedVer)" } else { "" }
+        Write-Skip "CCswitch$verText"
+    }
+} else {
+    $needInstall = $true
+}
+
+if (-not $needInstall) {
+    # up to date, nothing to do
 } else {
     # Clean up old portable CCswitch directory (from previous setup versions)
     $oldCcsDir = Join-Path $toolsDir "ccswitch"
@@ -343,15 +373,15 @@ if ($ccsExe) {
         Write-Host "  Attempting install anyway; if it fails, reboot and re-run setup." -ForegroundColor Yellow
     }
 
-    Write-Host "  Querying GitHub for latest release..."
     try {
-        $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/farion1231/cc-switch/releases/latest" -UseBasicParsing
-        $asset = $rel.assets | Where-Object { $_.name -match "Windows\.msi$" -and $_.name -notmatch "arm64" } | Select-Object -First 1
+        # Reuse the release asset already queried above (avoid a second GitHub call)
+        $asset = $latestAsset
         if ($asset) {
             $ccsDir = Join-Path $toolsDir "ccswitch"
             $msi = Join-Path $env:TEMP "ccswitch-setup.msi"
             Download-File $asset.browser_download_url $msi
-            Write-Host "  Installing CCswitch (MSI) to $ccsDir ..."
+            $verbNoun = if ($installedVer) { "Updating" } else { "Installing" }
+            Write-Host "  $verbNoun CCswitch (MSI) to $ccsDir ..."
             if (-not (Test-Path $ccsDir)) { New-Item -ItemType Directory -Path $ccsDir -Force | Out-Null }
             $msiLog = Join-Path $toolsDir "ccswitch-install.log"
             $msiArgs = "/i `"$msi`" INSTALLDIR=`"$ccsDir`" /quiet /norestart /log `"$msiLog`""
@@ -364,7 +394,8 @@ if ($ccsExe) {
             Remove-Item $msi -Force -ErrorAction SilentlyContinue
             if ($proc.ExitCode -eq 0) {
                 Remove-Item $msiLog -Force -ErrorAction SilentlyContinue
-                Write-OK "CCswitch installed (MSI)"
+                $doneWord = if ($installedVer) { "updated" } else { "installed" }
+                Write-OK "CCswitch $doneWord (MSI)"
             } else {
                 Write-Err "CCswitch MSI install failed (exit code $($proc.ExitCode))"
                 if ($rebootPending) {
@@ -383,17 +414,32 @@ if ($ccsExe) {
 }
 
 # ============================================================
-# 5. claude-code CLI
+# 5. claude-code CLI (installs if missing, updates if newer available)
 # ============================================================
 Write-Step "claude-code CLI"
 $claudeCmd = Join-Path $nodeDir "claude.cmd"
+$npmCmd = Join-Path $nodeDir "npm.cmd"
+$env:PATH = "$nodeDir;$env:PATH"
 if (Test-Path $claudeCmd) {
-    Write-Skip "claude-code"
+    # Already installed - check npm registry for a newer version
+    $ErrorActionPreference = "SilentlyContinue"
+    $localVer = (& $claudeCmd --version 2>$null) -replace '[^\d.].*$',''
+    $latestVer = (& $npmCmd view "@anthropic-ai/claude-code" version 2>$null)
+    $ErrorActionPreference = "Stop"
+    if ($localVer -and $latestVer -and $localVer -ne $latestVer) {
+        Write-Host "  Update available: v$localVer -> v$latestVer, updating..." -ForegroundColor Cyan
+        $ErrorActionPreference = "SilentlyContinue"
+        & $npmCmd install -g "@anthropic-ai/claude-code@latest" | Out-Null
+        $ErrorActionPreference = "Stop"
+        Write-OK "claude-code updated to v$latestVer"
+    } else {
+        $vt = if ($localVer) { " (v$localVer)" } else { "" }
+        Write-Skip "claude-code$vt"
+    }
 } else {
     Write-Host "  Installing via npm (may take a few minutes)..."
-    $env:PATH = "$nodeDir;$env:PATH"
     $ErrorActionPreference = "SilentlyContinue"
-    & (Join-Path $nodeDir "npm.cmd") install -g "@anthropic-ai/claude-code" | Out-Null
+    & $npmCmd install -g "@anthropic-ai/claude-code" | Out-Null
     $ErrorActionPreference = "Stop"
     if (Test-Path $claudeCmd) { Write-OK "claude-code CLI installed" }
     else { Write-Err "claude-code installation failed"; exit 1 }

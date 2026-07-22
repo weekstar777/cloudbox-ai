@@ -62,6 +62,8 @@ cloudbox-ai/
 
 已安装的工具自动跳过，可重复运行。换机器后重新运行即可自动配置。
 
+> **检查更新**：再次运行 `setup.bat` 时，CCswitch 和 claude-code 会自动比对版本，有新版则更新。Node.js、Python、Git 为便携版，保持已安装不变。
+
 ### 2. 配置 CCswitch
 
 打开 CCswitch → 设置 → 高级 → **配置文件目录**，将各工具的配置目录指向 `configs/` 子目录：
