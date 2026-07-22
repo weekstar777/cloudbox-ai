@@ -1,4 +1,4 @@
-# setup.ps1 - One-click dependency installer for cloudbox-ai portable environment
+﻿# setup.ps1 - One-click dependency installer for cloudbox-ai portable environment
 # Downloads: Node.js, Python, Git, CCswitch (MSI full installer), claude-code CLI
 # Configures: CLAUDE_CONFIG_DIR (user-level), portable Node.js in user PATH
 
@@ -126,30 +126,16 @@ if (Test-Path (Join-Path $gitDir "cmd\git.exe")) {
 # 4. CCswitch (latest MSI from GitHub, auto-updates if newer)
 # ============================================================
 Write-Step "CCswitch"
-# Detect existing installation
-$ccsExe = $null
-$candidatePaths = @(
-    (Join-Path $toolsDir "ccswitch\cc-switch.exe"),
-    (Join-Path $toolsDir "ccswitch\CC Switch.exe"),
-    "$env:ProgramFiles\CC-Switch\cc-switch.exe",
-    "${env:ProgramFiles(x86)}\CC-Switch\cc-switch.exe",
-    "$env:LOCALAPPDATA\CC-Switch\cc-switch.exe",
-    "$env:LOCALAPPDATA\Programs\CC-Switch\cc-switch.exe",
-    "$env:LOCALAPPDATA\Programs\CC Switch\cc-switch.exe",
-    "$env:LOCALAPPDATA\Programs\CC Switch\CC Switch.exe"
-)
-foreach ($p in $candidatePaths) {
-    if (Test-Path $p) { $ccsExe = $p; break }
-}
-if (-not $ccsExe) {
-    $ccsCmd = Get-Command "cc-switch" -ErrorAction SilentlyContinue
-    if (-not $ccsCmd) { $ccsCmd = Get-Command "CC Switch" -ErrorAction SilentlyContinue }
-    if ($ccsCmd) { $ccsExe = $ccsCmd.Source }
-}
+# We install CCswitch as a PORTABLE copy under tools\CCswitch (extracted from the
+# official MSI). Detection looks only at that portable path -- any %LOCALAPPDATA%
+# MSI install from an older setup is intentionally ignored so setup always
+# (re)creates the portable copy the user wants under tools\CCswitch.
+$ccsDir = Join-Path $toolsDir "CCswitch"
+$ccsExe = Join-Path $ccsDir "cc-switch.exe"
 
 # Determine installed version and latest available version
 $installedVer = $null
-if ($ccsExe) {
+if (Test-Path $ccsExe) {
     try { $installedVer = [version]((Get-Item $ccsExe).VersionInfo.ProductVersion -replace '[^\d.].*$','') } catch {}
 }
 $latestVer = $null
@@ -164,7 +150,7 @@ try {
 
 # Decide: skip (up to date), update (newer available), or install (not present)
 $needInstall = $false
-if ($ccsExe) {
+if (Test-Path $ccsExe) {
     if ($latestVer -and $installedVer -and $latestVer -gt $installedVer) {
         Write-Host "  Update available: v$installedVer -> v$latestVer" -ForegroundColor Cyan
         $needInstall = $true
@@ -179,239 +165,71 @@ if ($ccsExe) {
 if (-not $needInstall) {
     # up to date, nothing to do
 } else {
-    # Clean up old portable CCswitch directory (from previous setup versions)
-    $oldCcsDir = Join-Path $toolsDir "ccswitch"
-    if (Test-Path $oldCcsDir) {
-        Write-Host "  Removing old portable CCswitch..."
-        Remove-Item $oldCcsDir -Recurse -Force -ErrorAction SilentlyContinue
-        Write-OK "Old portable CCswitch removed"
-    }
-
-    # ── Thorough uninstall of any existing CC Switch ──────────────────
-    # The MSI upgrade path (RemoveExistingProducts) fails with Error 1714/1612
-    # when the Windows Installer cached MSI is missing or corrupted.
-    # Strategy: force-uninstall via WMI first, then surgically remove every
-    # trace from the registry so the new MSI installs as a clean first-time.
-
-    $ErrorActionPreference = "SilentlyContinue"
-
-    # Step 1: Try WMI uninstall (handles missing cached MSI better than msiexec /x)
-    $wmiProduct = Get-WmiObject Win32_Product -Filter "Name LIKE '%CC%Switch%'" -ErrorAction SilentlyContinue
-    if ($wmiProduct) {
-        Write-Host "  Uninstalling CC Switch via WMI: $($wmiProduct.Name) v$($wmiProduct.Version)..."
-        $wmiResult = $wmiProduct.Uninstall()
-        if ($wmiResult.ReturnValue -eq 0) {
-            Write-OK "CC Switch uninstalled via WMI"
-        } else {
-            Write-Host "  WMI uninstall returned $($wmiResult.ReturnValue), continuing with manual cleanup..." -ForegroundColor Yellow
-        }
-    }
-
-    # Step 2: Try msiexec /x for each product code found in Uninstall keys
-    $uninstallPaths = @(
-        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
-        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
-    )
-    foreach ($regPath in $uninstallPaths) {
-        Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
-            $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-            if ($props.DisplayName -match "CC\s*Switch") {
-                $prodCode = $_.PSChildName
-                Write-Host "  Trying msiexec /x $prodCode ..."
-                $p = Start-Process msiexec -ArgumentList "/x `"$prodCode`" /quiet /norestart" -Wait -PassThru -ErrorAction SilentlyContinue
-                if ($p -and $p.ExitCode -eq 0) { Write-OK "msiexec /x succeeded" }
-                # Remove the Uninstall key regardless (force cleanup)
-                Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
-            }
-        }
-    }
-
-    # Step 3: Remove Windows Installer internal database entries
-    # These are what FindRelatedProducts uses; if any remain, the new MSI
-    # will try RemoveExistingProducts and fail.
-
-    # 3a: Collect compressed product GUIDs from Products keys
-    $installerProductPaths = @(
-        "HKCR:\Installer\Products",
-        "HKLM:\SOFTWARE\Classes\Installer\Products"
-    )
-    $ccsCompressedGuids = @()
-    foreach ($regPath in $installerProductPaths) {
-        Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
-            $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-            if ($props.ProductName -match "CC\s*Switch") {
-                $ccsCompressedGuids += $_.PSChildName
-                Write-Host "  Found Installer Product: $($props.ProductName) [$($_.PSChildName)]"
-            }
-        }
-    }
-
-    # 3b: Also collect from UserData (the product might only be registered here)
-    $userDataPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData"
-    if (Test-Path $userDataPath) {
-        Get-ChildItem $userDataPath -ErrorAction SilentlyContinue | ForEach-Object {
-            $productsPath = Join-Path $_.PSPath "Products"
-            if (Test-Path $productsPath) {
-                Get-ChildItem $productsPath -ErrorAction SilentlyContinue | ForEach-Object {
-                    $ipPath = Join-Path $_.PSPath "InstallProperties"
-                    if (Test-Path $ipPath) {
-                        $ip = Get-ItemProperty $ipPath -ErrorAction SilentlyContinue
-                        if ($ip.DisplayName -match "CC\s*Switch") {
-                            if ($ccsCompressedGuids -notcontains $_.PSChildName) {
-                                $ccsCompressedGuids += $_.PSChildName
-                            }
-                            Write-Host "  Removing Installer UserData: $($ip.DisplayName)"
-                            Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
-                            Write-OK "UserData entry removed"
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    # 3c: Remove UpgradeCode entries that reference any CC Switch product
-    $upgradeCodePaths = @(
-        "HKCR:\Installer\UpgradeCodes",
-        "HKLM:\SOFTWARE\Classes\Installer\UpgradeCodes"
-    )
-    if ($ccsCompressedGuids.Count -gt 0) {
-        foreach ($regPath in $upgradeCodePaths) {
-            Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
-                $keyPath = $_.PSPath
-                foreach ($vn in $_.GetValueNames()) {
-                    if ($ccsCompressedGuids -contains $vn) {
-                        Write-Host "  Removing UpgradeCode entry: $($_.PSChildName)"
-                        Remove-Item $keyPath -Recurse -Force -ErrorAction SilentlyContinue
-                        Write-OK "UpgradeCode removed"
-                        break
-                    }
-                }
-            }
-        }
-    }
-
-    # 3d: Remove Products entries
-    foreach ($regPath in $installerProductPaths) {
-        Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
-            $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-            if ($props.ProductName -match "CC\s*Switch") {
-                Write-Host "  Removing Installer Product: $($props.ProductName)"
-                Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
-                Write-OK "Product entry removed"
-            }
-        }
-    }
-
-    # 3e: Also search per-user hives (HKU\<SID>\Software\Classes\Installer)
+    # -- Install CCswitch as a portable copy under tools\CCswitch ----------
+    # We use the OFFICIAL MSI, but extract it with an administrative install
+    # (msiexec /a) instead of a normal install (/i). Rationale:
+    #   * This Tauri/WiX package hard-codes its install dir to
+    #     %LOCALAPPDATA%\Programs\CC Switch via a SetDirectory custom action and
+    #     ignores a command-line INSTALLDIR=, so /i can never land in tools\.
+    #   * /a only unpacks the payload files to TARGETDIR and runs NONE of the
+    #     install custom actions -- no forced LocalAppData path, no registry
+    #     product record. That also means the whole 1603 / RemoveExistingProducts
+    #     failure mode (missing cached MSI on upgrade) simply cannot occur.
+    # The result is a self-contained tools\CCswitch\cc-switch.exe.
     try {
-        $hku = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::Users, [Microsoft.Win32.RegistryView]::Default)
-        foreach ($sidName in $hku.GetSubKeyNames()) {
-            foreach ($subPath in @("Software\Classes\Installer\Products", "Software\Classes\Installer\UpgradeCodes")) {
-                $subKey = $hku.OpenSubKey("$sidName\$subPath", $true)
-                if ($subKey) {
-                    foreach ($name in $subKey.GetSubKeyNames()) {
-                        if ($subPath -match "Products") {
-                            $prodKey = $subKey.OpenSubKey($name)
-                            if ($prodKey) {
-                                $pn = $prodKey.GetValue("ProductName")
-                                $prodKey.Close()
-                                if ($pn -match "CC\s*Switch") {
-                                    Write-Host "  Removing HKU product: $pn (SID=$sidName)"
-                                    $subKey.DeleteSubKeyTree($name, $false)
-                                    Write-OK "HKU product removed"
-                                }
-                            }
-                        } elseif ($ccsCompressedGuids.Count -gt 0) {
-                            $ucKey = $subKey.OpenSubKey($name)
-                            if ($ucKey) {
-                                $match = $false
-                                foreach ($vn in $ucKey.GetValueNames()) {
-                                    if ($ccsCompressedGuids -contains $vn) { $match = $true; break }
-                                }
-                                $ucKey.Close()
-                                if ($match) {
-                                    Write-Host "  Removing HKU UpgradeCode (SID=$sidName)"
-                                    $subKey.DeleteSubKeyTree($name, $false)
-                                    Write-OK "HKU UpgradeCode removed"
-                                }
-                            }
-                        }
-                    }
-                    $subKey.Close()
-                }
-            }
-        }
-        $hku.Close()
-    } catch {}
-
-    # Step 4: Remove CC Switch installation directories
-    $ccsDirs = @(
-        "$env:LOCALAPPDATA\Programs\CC Switch",
-        "$env:LOCALAPPDATA\Programs\CC-Switch",
-        "$env:USERPROFILE\.cc-switch"
-    )
-    foreach ($d in $ccsDirs) {
-        if (Test-Path $d) {
-            Write-Host "  Removing install directory: $d"
-            Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
-            Write-OK "Directory removed"
-        }
-    }
-
-    $ErrorActionPreference = "Stop"
-
-    # Check for pending reboot
-    $rebootPending = $false
-    try {
-        $pfro = Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name PendingFileRenameOperations -ErrorAction Stop
-        if ($pfro.PendingFileRenameOperations) { $rebootPending = $true }
-    } catch {}
-    if ($rebootPending) {
-        Write-Host "  [WARN] System has a pending reboot (MsiSystemRebootPending)." -ForegroundColor Yellow
-        Write-Host "  Attempting install anyway; if it fails, reboot and re-run setup." -ForegroundColor Yellow
-    }
-
-    try {
-        # Reuse the release asset already queried above (avoid a second GitHub call)
         $asset = $latestAsset
-        if ($asset) {
-            $ccsDir = Join-Path $toolsDir "ccswitch"
+        if (-not $asset) {
+            Write-Err "Windows MSI asset not found in release"
+        } else {
+            $verbNoun = if ($installedVer) { "Updating" } else { "Installing" }
+            Write-Host "  $verbNoun CCswitch (portable, extracted from official MSI) ..."
+
             $msi = Join-Path $env:TEMP "ccswitch-setup.msi"
             Download-File $asset.browser_download_url $msi
-            $verbNoun = if ($installedVer) { "Updating" } else { "Installing" }
-            Write-Host "  $verbNoun CCswitch (MSI) to $ccsDir ..."
-            if (-not (Test-Path $ccsDir)) { New-Item -ItemType Directory -Path $ccsDir -Force | Out-Null }
+
+            # Fresh target dir
+            if (Test-Path $ccsDir) { Remove-Item $ccsDir -Recurse -Force -ErrorAction SilentlyContinue }
+            New-Item -ItemType Directory -Path $ccsDir -Force | Out-Null
+
+            $extractRoot = Join-Path $env:TEMP "ccswitch-extract"
+            if (Test-Path $extractRoot) { Remove-Item $extractRoot -Recurse -Force -ErrorAction SilentlyContinue }
+            New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+
             $msiLog = Join-Path $toolsDir "ccswitch-install.log"
-            $msiArgs = "/i `"$msi`" INSTALLDIR=`"$ccsDir`" /quiet /norestart /log `"$msiLog`""
-            $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-            if ($isAdmin) {
-                $proc = Start-Process msiexec -ArgumentList $msiArgs -Wait -PassThru
+            $msiArgs = @('/a', $msi, "TARGETDIR=$extractRoot", '/quiet', '/norestart', '/log', $msiLog)
+            $proc = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
+
+            if ($proc.ExitCode -ne 0) {
+                Write-Err "CCswitch extraction failed (exit code $($proc.ExitCode))"
+                if (Test-Path $msiLog) { Write-Host "  Install log: $msiLog" -ForegroundColor Yellow }
             } else {
-                $proc = Start-Process msiexec -ArgumentList $msiArgs -Wait -PassThru -Verb RunAs
-            }
-            Remove-Item $msi -Force -ErrorAction SilentlyContinue
-            if ($proc.ExitCode -eq 0) {
-                Remove-Item $msiLog -Force -ErrorAction SilentlyContinue
-                $doneWord = if ($installedVer) { "updated" } else { "installed" }
-                Write-OK "CCswitch $doneWord (MSI)"
-            } else {
-                Write-Err "CCswitch MSI install failed (exit code $($proc.ExitCode))"
-                if ($rebootPending) {
-                    Write-Host "  A system reboot is pending. Please reboot and re-run setup.bat." -ForegroundColor Yellow
+                # Locate the extracted cc-switch.exe (nested under Programs\CC Switch\)
+                $found = Get-ChildItem $extractRoot -Recurse -Filter "cc-switch.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+                if (-not $found) {
+                    Write-Err "cc-switch.exe not found in extracted payload"
+                } else {
+                    # Flatten every payload file into tools\CCswitch (keep the exe's own dir contents)
+                    $srcDir = $found.Directory.FullName
+                    Get-ChildItem $srcDir -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                        Move-Item -LiteralPath $_.FullName -Destination (Join-Path $ccsDir $_.Name) -Force -ErrorAction SilentlyContinue
+                    }
+                    Remove-Item $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+                    Remove-Item $msi -Force -ErrorAction SilentlyContinue
+                    Remove-Item $msiLog -Force -ErrorAction SilentlyContinue
+                    if (Test-Path $ccsExe) {
+                        $doneWord = if ($installedVer) { "updated" } else { "installed" }
+                        Write-OK "CCswitch $doneWord to $ccsDir"
+                    } else {
+                        Write-Err "CCswitch install incomplete: $ccsExe missing"
+                    }
                 }
-                if (Test-Path $msiLog) {
-                    Write-Host "  Install log: $msiLog" -ForegroundColor Yellow
-                }
             }
-        } else {
-            Write-Err "Windows MSI asset not found in release"
         }
     } catch {
-        Write-Err "GitHub query failed: $_"
+        Write-Err "CCswitch install failed: $_"
     }
 }
+
 
 # ============================================================
 # 5. claude-code CLI (installs if missing, updates if newer available)
@@ -498,6 +316,12 @@ $nv = & (Join-Path $nodeDir "node.exe") --version; Write-OK "Node.js $nv"
 $pv = & (Join-Path $pyDir "python.exe") --version; Write-OK "$pv"
 $gv = & (Join-Path $gitDir "cmd\git.exe") --version; Write-OK "$gv"
 $cv = & $claudeCmd --version; Write-OK "claude $cv"
+if (Test-Path $ccsExe) {
+    $ccv = try { (Get-Item $ccsExe).VersionInfo.ProductVersion } catch { $null }
+    Write-OK "CCswitch $(if($ccv){"v$ccv "})($ccsDir)"
+} else {
+    Write-Err "CCswitch not found at $ccsExe"
+}
 $ErrorActionPreference = "Stop"
 
 Write-Host ""
