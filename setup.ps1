@@ -28,6 +28,22 @@ function Download-File($url, $out) {
     if (-not (Test-Path $out)) { throw "Download failed: $url" }
 }
 
+# Convert a product GUID {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} into the packed
+# form Windows Installer uses as registry key names (used to purge stale product
+# registration so a reinstall cannot fail RegisterProduct with 1603).
+function Convert-ToCompressedGuid([string]$g) {
+    if (-not $g) { return $null }
+    $g = $g.Trim().Trim('{', '}')
+    $p = $g.Split('-')
+    if ($p.Count -ne 5) { return $null }
+    $rev = { param($s) -join ($s.ToCharArray()[($s.Length - 1)..0]) }
+    $out = (& $rev $p[0]) + (& $rev $p[1]) + (& $rev $p[2])
+    foreach ($seg in @($p[3], $p[4])) {
+        for ($i = 0; $i -lt $seg.Length; $i += 2) { $out += $seg[$i + 1]; $out += $seg[$i] }
+    }
+    return $out
+}
+
 if (-not (Test-Path $toolsDir)) { New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null }
 
 # ============================================================
@@ -126,14 +142,23 @@ if (Test-Path (Join-Path $gitDir "cmd\git.exe")) {
 # 4. CCswitch (latest MSI from GitHub, auto-updates if newer)
 # ============================================================
 Write-Step "CCswitch"
-# We install CCswitch as a PORTABLE copy under tools\CCswitch (extracted from the
-# official MSI). Detection looks only at that portable path -- any %LOCALAPPDATA%
-# MSI install from an older setup is intentionally ignored so setup always
-# (re)creates the portable copy the user wants under tools\CCswitch.
-$ccsDir = Join-Path $toolsDir "CCswitch"
-$ccsExe = Join-Path $ccsDir "cc-switch.exe"
+# Install the OFFICIAL CCswitch MSI, but keep the program files under
+# tools\CCswitch so the whole toolchain stays in one portable folder.
+#
+# This Tauri/WiX MSI hard-codes its install dir to %LOCALAPPDATA%\Programs\CC
+# Switch (a command-line INSTALLDIR= is ignored). So we:
+#   1. run the real installer (msiexec /i) -> lands in %LOCALAPPDATA%
+#   2. move the installed payload into tools\CCswitch
+#   3. replace the %LOCALAPPDATA% dir with a junction -> tools\CCswitch
+# The result is a normal install (Start-menu shortcut, Add/Remove Programs
+# entry) whose files physically live in tools\CCswitch.
+#
+# We also keep the downloaded .msi in tools\CCswitch for reference/repair.
+$ccsDir  = Join-Path $toolsDir "CCswitch"
+$ccsExe  = Join-Path $ccsDir "cc-switch.exe"
+$ccsLink = Join-Path $env:LOCALAPPDATA "Programs\CC Switch"
 
-# Determine installed version and latest available version
+# Version already installed under tools\CCswitch, and the latest available.
 $installedVer = $null
 if (Test-Path $ccsExe) {
     try { $installedVer = [version]((Get-Item $ccsExe).VersionInfo.ProductVersion -replace '[^\d.].*$','') } catch {}
@@ -148,7 +173,7 @@ try {
     Write-Host "  [WARN] Could not query GitHub for latest version." -ForegroundColor Yellow
 }
 
-# Decide: skip (up to date), update (newer available), or install (not present)
+# Decide: skip (up to date), or (re)install (missing / newer available).
 $needInstall = $false
 if (Test-Path $ccsExe) {
     if ($latestVer -and $installedVer -and $latestVer -gt $installedVer) {
@@ -162,66 +187,187 @@ if (Test-Path $ccsExe) {
     $needInstall = $true
 }
 
-if (-not $needInstall) {
-    # up to date, nothing to do
-} else {
-    # -- Install CCswitch as a portable copy under tools\CCswitch ----------
-    # We use the OFFICIAL MSI, but extract it with an administrative install
-    # (msiexec /a) instead of a normal install (/i). Rationale:
-    #   * This Tauri/WiX package hard-codes its install dir to
-    #     %LOCALAPPDATA%\Programs\CC Switch via a SetDirectory custom action and
-    #     ignores a command-line INSTALLDIR=, so /i can never land in tools\.
-    #   * /a only unpacks the payload files to TARGETDIR and runs NONE of the
-    #     install custom actions -- no forced LocalAppData path, no registry
-    #     product record. That also means the whole 1603 / RemoveExistingProducts
-    #     failure mode (missing cached MSI on upgrade) simply cannot occur.
-    # The result is a self-contained tools\CCswitch\cc-switch.exe.
+if ($needInstall) {
     try {
         $asset = $latestAsset
         if (-not $asset) {
             Write-Err "Windows MSI asset not found in release"
         } else {
-            $verbNoun = if ($installedVer) { "Updating" } else { "Installing" }
-            Write-Host "  $verbNoun CCswitch (portable, extracted from official MSI) ..."
+            if (-not (Test-Path $ccsDir)) { New-Item -ItemType Directory -Path $ccsDir -Force | Out-Null }
 
-            $msi = Join-Path $env:TEMP "ccswitch-setup.msi"
+            # Download the MSI to a temp location (installer only -- it is deleted
+            # after install so it does not clutter tools\CCswitch). Also clear any
+            # older MSI that a previous version of this script left in $ccsDir.
+            Get-ChildItem $ccsDir -Filter "*.msi" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+            $msi = Join-Path $toolsDir $asset.name
+            $verbNoun = if ($installedVer) { "Updating" } else { "Installing" }
+            Write-Host "  $verbNoun CCswitch (official MSI) ..."
             Download-File $asset.browser_download_url $msi
 
-            # Fresh target dir
-            if (Test-Path $ccsDir) { Remove-Item $ccsDir -Recurse -Force -ErrorAction SilentlyContinue }
-            New-Item -ItemType Directory -Path $ccsDir -Force | Out-Null
+            # Purge any stale registration for this product so the install is a
+            # real fresh install, not a no-op "reconfigure". A half-removed prior
+            # install leaves a ghost pair -- an ARP entry (often with a blank
+            # version) plus a UserData Products record pointing at a cached
+            # package -- which makes msiexec /i exit 0 while laying down zero
+            # files, or fail RegisterProduct with 1603.
+            #
+            # We collect compressed product GUIDs from BOTH directions so purge
+            # is self-sufficient regardless of which half survived:
+            #   a) ARP DisplayName -> product GUID -> compressed GUID
+            #   b) UserData Products\<compressed>\InstallProperties DisplayName
+            # (b) is essential: if ARP is already gone, the UserData ghost is the
+            # thing that triggers the no-op, and only a direct scan finds it.
+            $compGuids = @()
 
-            $extractRoot = Join-Path $env:TEMP "ccswitch-extract"
-            if (Test-Path $extractRoot) { Remove-Item $extractRoot -Recurse -Force -ErrorAction SilentlyContinue }
-            New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+            # a) ARP (all three hives); also remove the ARP key itself.
+            foreach ($rp in @(
+                "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+                "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")) {
+                Get-ChildItem $rp -ErrorAction SilentlyContinue | ForEach-Object {
+                    $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+                    if ($p.DisplayName -match "CC\s*Switch") {
+                        if ($_.PSChildName -match '^\{[0-9A-Fa-f\-]{36}\}$') {
+                            $c = Convert-ToCompressedGuid $_.PSChildName
+                            if ($c) { $compGuids += $c }
+                        }
+                        Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+                    }
+                }
+            }
 
+            # b) UserData Products scanned directly by DisplayName -- the key
+            #    name already IS the compressed GUID.
+            $udRoot = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData"
+            Get-ChildItem $udRoot -ErrorAction SilentlyContinue | ForEach-Object {
+                Get-ChildItem (Join-Path $_.PSPath "Products") -ErrorAction SilentlyContinue | ForEach-Object {
+                    $ip = Get-ItemProperty (Join-Path $_.PSPath "InstallProperties") -ErrorAction SilentlyContinue
+                    if ($ip.DisplayName -match "CC\s*Switch") { $compGuids += $_.PSChildName }
+                }
+            }
+
+            # Drop UserData + HKCU Installer records for every compressed GUID found.
+            foreach ($comp in ($compGuids | Select-Object -Unique)) {
+                if (-not $comp) { continue }
+                Get-ChildItem $udRoot -ErrorAction SilentlyContinue | ForEach-Object {
+                    $pp = Join-Path $_.PSPath "Products\$comp"
+                    if (Test-Path $pp) { Remove-Item -LiteralPath $pp -Recurse -Force -ErrorAction SilentlyContinue }
+                }
+                foreach ($sub in @("Products", "Features")) {
+                    $hp = "HKCU:\SOFTWARE\Microsoft\Installer\$sub\$comp"
+                    if (Test-Path $hp) { Remove-Item -LiteralPath $hp -Recurse -Force -ErrorAction SilentlyContinue }
+                }
+            }
+
+            # Clear the install-target location (old dir or stale junction).
+            if (Test-Path $ccsLink) {
+                $it = Get-Item $ccsLink -Force
+                if ($it.LinkType) { cmd /c rmdir "`"$ccsLink`"" | Out-Null } else { Remove-Item $ccsLink -Recurse -Force -ErrorAction SilentlyContinue }
+            }
+
+            # 1) Run the real installer.
             $msiLog = Join-Path $toolsDir "ccswitch-install.log"
-            $msiArgs = @('/a', $msi, "TARGETDIR=$extractRoot", '/quiet', '/norestart', '/log', $msiLog)
-            $proc = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
+            $proc = Start-Process msiexec.exe -ArgumentList @('/i', $msi, '/quiet', '/norestart', '/log', $msiLog) -Wait -PassThru
+
+            # 1612 = "installation source unavailable". This happens when a stale
+            # product registration survived with a LastUsedSource pointing at an
+            # MSI we already deleted: msiexec treats /i as maintenance of the
+            # "installed" product and hunts for the old source instead of using
+            # our new package. The ghost lives in HKCU managed-install view
+            # (Installer\Products|Features\<compressed>), which our purge above
+            # normally clears -- but if an external leftover slips through, force
+            # a re-purge of every CC Switch product code and retry once.
+            if ($proc.ExitCode -eq 1612) {
+                Write-Host "  1612 (stale source); purging product registration and retrying..." -ForegroundColor Yellow
+                $retry = @()
+                foreach ($rp in @(
+                    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+                    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")) {
+                    Get-ChildItem $rp -ErrorAction SilentlyContinue | ForEach-Object {
+                        $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+                        if ($p.DisplayName -match "CC\s*Switch" -and $_.PSChildName -match '^\{[0-9A-Fa-f\-]{36}\}$') {
+                            $c = Convert-ToCompressedGuid $_.PSChildName; if ($c) { $retry += $c }
+                            Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+                        }
+                    }
+                }
+                Get-ChildItem $udRoot -ErrorAction SilentlyContinue | ForEach-Object {
+                    Get-ChildItem (Join-Path $_.PSPath "Products") -ErrorAction SilentlyContinue | ForEach-Object {
+                        $ip = Get-ItemProperty (Join-Path $_.PSPath "InstallProperties") -ErrorAction SilentlyContinue
+                        if ($ip.DisplayName -match "CC\s*Switch") { $retry += $_.PSChildName }
+                    }
+                }
+                foreach ($c in ($retry | Select-Object -Unique)) {
+                    if (-not $c) { continue }
+                    Get-ChildItem $udRoot -ErrorAction SilentlyContinue | ForEach-Object {
+                        $pp = Join-Path $_.PSPath "Products\$c"
+                        if (Test-Path $pp) { Remove-Item -LiteralPath $pp -Recurse -Force -ErrorAction SilentlyContinue }
+                    }
+                    foreach ($sub in @("Products", "Features")) {
+                        $hp = "HKCU:\SOFTWARE\Microsoft\Installer\$sub\$c"
+                        if (Test-Path $hp) { Remove-Item -LiteralPath $hp -Recurse -Force -ErrorAction SilentlyContinue }
+                    }
+                    $cp = "HKLM:\SOFTWARE\Classes\Installer\Products\$c"
+                    if (Test-Path $cp) { Remove-Item -LiteralPath $cp -Recurse -Force -ErrorAction SilentlyContinue }
+                }
+                if (Test-Path $ccsLink) {
+                    $it = Get-Item $ccsLink -Force
+                    if ($it.LinkType) { cmd /c rmdir "`"$ccsLink`"" | Out-Null } else { Remove-Item $ccsLink -Recurse -Force -ErrorAction SilentlyContinue }
+                }
+                $proc = Start-Process msiexec.exe -ArgumentList @('/i', $msi, '/quiet', '/norestart', '/log', $msiLog) -Wait -PassThru
+            }
 
             if ($proc.ExitCode -ne 0) {
-                Write-Err "CCswitch extraction failed (exit code $($proc.ExitCode))"
+                Write-Err "CCswitch install failed (exit code $($proc.ExitCode))"
                 if (Test-Path $msiLog) { Write-Host "  Install log: $msiLog" -ForegroundColor Yellow }
+                Remove-Item -LiteralPath $msi -Force -ErrorAction SilentlyContinue
+            } elseif (-not (Test-Path (Join-Path $ccsLink "cc-switch.exe"))) {
+                Write-Err "CCswitch installed but cc-switch.exe not found in $ccsLink"
+                Remove-Item -LiteralPath $msi -Force -ErrorAction SilentlyContinue
             } else {
-                # Locate the extracted cc-switch.exe (nested under Programs\CC Switch\)
-                $found = Get-ChildItem $extractRoot -Recurse -Filter "cc-switch.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-                if (-not $found) {
-                    Write-Err "cc-switch.exe not found in extracted payload"
+                # 2) Copy the installed payload into tools\CCswitch.
+                Get-ChildItem $ccsLink -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                    $dest = Join-Path $ccsDir $_.Name
+                    if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force -ErrorAction SilentlyContinue }
+                    Copy-Item -LiteralPath $_.FullName -Destination $dest -Recurse -Force
+                }
+
+                # 3) Re-point Start-menu shortcut(s) that reference the soon-to-be
+                #    deleted %LOCALAPPDATA% path at tools\CCswitch, so they don't
+                #    become dead links once we remove the original folder.
+                $startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\CC Switch"
+                if (Test-Path $startMenu) {
+                    $ws = New-Object -ComObject WScript.Shell
+                    Get-ChildItem $startMenu -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object {
+                        try {
+                            $sc = $ws.CreateShortcut($_.FullName)
+                            if ($sc.TargetPath -like "$ccsLink*") {
+                                $sc.TargetPath = $sc.TargetPath -replace [regex]::Escape($ccsLink), $ccsDir
+                                if ($sc.WorkingDirectory -like "$ccsLink*") {
+                                    $sc.WorkingDirectory = $sc.WorkingDirectory -replace [regex]::Escape($ccsLink), $ccsDir
+                                }
+                                $sc.Save()
+                            }
+                        } catch {}
+                    }
+                }
+
+                # 4) Remove the original %LOCALAPPDATA%\Programs\CC Switch folder.
+                #    The program now runs from tools\CCswitch. NOTE: the ARP entry
+                #    still points here, so uninstalling via Add/Remove Programs will
+                #    not find these files -- that's the trade-off of not using a
+                #    junction. Running cc-switch.exe from tools\CCswitch works fine.
+                Remove-Item $ccsLink -Recurse -Force -ErrorAction SilentlyContinue
+
+                # 5) Delete the temp installer MSI -- it is not kept.
+                Remove-Item -LiteralPath $msi -Force -ErrorAction SilentlyContinue
+                Remove-Item $msiLog -Force -ErrorAction SilentlyContinue
+                if (Test-Path $ccsExe) {
+                    $doneWord = if ($installedVer) { "updated" } else { "installed" }
+                    Write-OK "CCswitch $doneWord to $ccsDir"
                 } else {
-                    # Flatten every payload file into tools\CCswitch (keep the exe's own dir contents)
-                    $srcDir = $found.Directory.FullName
-                    Get-ChildItem $srcDir -Force -ErrorAction SilentlyContinue | ForEach-Object {
-                        Move-Item -LiteralPath $_.FullName -Destination (Join-Path $ccsDir $_.Name) -Force -ErrorAction SilentlyContinue
-                    }
-                    Remove-Item $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
-                    Remove-Item $msi -Force -ErrorAction SilentlyContinue
-                    Remove-Item $msiLog -Force -ErrorAction SilentlyContinue
-                    if (Test-Path $ccsExe) {
-                        $doneWord = if ($installedVer) { "updated" } else { "installed" }
-                        Write-OK "CCswitch $doneWord to $ccsDir"
-                    } else {
-                        Write-Err "CCswitch install incomplete: $ccsExe missing"
-                    }
+                    Write-Err "CCswitch install incomplete: $ccsExe missing"
                 }
             }
         }
